@@ -1,0 +1,68 @@
+package com.example.onlinebartersystem.filters;
+
+import com.example.onlinebartersystem.EntryPointEXceptions.CustomAuthenticationEntryPoint;
+import com.example.onlinebartersystem.services.MyUserDetailService;
+import com.example.onlinebartersystem.util.JwtUtil;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.MalformedJwtException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import javax.servlet.FilterChain;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
+@Component
+public class JwtFilter extends OncePerRequestFilter {
+    @Autowired
+    private JwtUtil jwtUtil;
+    @Autowired
+    private MyUserDetailService myUserDetailsService;
+    @Override
+    protected void doFilterInternal(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, FilterChain filterChain) throws ServletException, IOException {
+        String header=httpServletRequest.getHeader("Authorization");
+        String userName=null;
+        String token=null;
+        try{
+            if(header!=null && header.startsWith("token")){
+                token=header.substring(5);
+
+                userName=jwtUtil.extractUsername(token);
+
+
+            }
+            if(userName!=null && SecurityContextHolder.getContext().getAuthentication()==null){
+                System.out.println("Inside if condition ");
+                UserDetails userDetails=myUserDetailsService.loadUserByUsername(userName);
+                if(jwtUtil.validateToken(token,userDetails)){
+                    try{
+                        UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken=new UsernamePasswordAuthenticationToken(userDetails,null,userDetails.getAuthorities());
+                        usernamePasswordAuthenticationToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(httpServletRequest));
+                        SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
+                    }
+                    catch(ExpiredJwtException e){
+                        e.printStackTrace();
+                    }
+
+                }
+            }
+        }
+        catch (ExpiredJwtException e){
+            CustomAuthenticationEntryPoint.message="Token is Expired";
+        }
+        catch(MalformedJwtException e){
+            CustomAuthenticationEntryPoint.message="Invalid Token";
+        }
+        finally {
+            filterChain.doFilter(httpServletRequest,httpServletResponse);
+        }
+
+    }
+}
